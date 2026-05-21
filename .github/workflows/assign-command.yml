@@ -1,0 +1,105 @@
+name: Assign Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    if: github.event.issue.pull_request == null
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Handle /assign command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body.trim().toLowerCase();
+            const sender = context.payload.comment.user.login;
+            const issue = context.payload.issue;
+
+            // Ignore bots and maintainer
+            const ignoredUsers = [
+              'github-actions[bot]'
+            ];
+
+            if (ignoredUsers.includes(sender)) return;
+
+            // Only continue for /assign
+            if (comment !== '/assign') return;
+
+            const assignees = issue.assignees || [];
+
+            // Already assigned to someone else
+            const assignedToOthers = assignees.some(
+              a => a.login !== sender
+            );
+
+            if (assignedToOthers) {
+
+              const assignedUsers = assignees
+                .map(a => `@${a.login}`)
+                .join(', ');
+
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: `Sorry @${sender} 👋
+
+This issue is already assigned to ${assignedUsers}.
+
+Please explore another available issue:
+https://github.com/imDarshanGK/AI-dev-assistant/issues
+
+Thank you for your interest in contributing 🚀`
+              });
+
+              return;
+            }
+
+            // Already assigned to same user
+            const alreadyAssignedToSender = assignees.some(
+              a => a.login === sender
+            );
+
+            if (alreadyAssignedToSender) {
+
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: `@${sender} you are already assigned to this issue ✅`
+              });
+
+              return;
+            }
+
+            // Assign issue
+            await github.rest.issues.addAssignees({
+              ...context.repo,
+              issue_number: issue.number,
+              assignees: [sender]
+            });
+
+            // Confirmation comment
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: issue.number,
+              body: `✅ Assigned to @${sender}
+
+Please complete the issue within 7 days.
+
+Next steps:
+1. Fork the repository
+2. Create a new branch
+3. Read CONTRIBUTING.md:
+https://github.com/imDarshanGK/AI-dev-assistant/blob/main/CONTRIBUTING.md
+4. Run tests before opening a PR:
+\`cd backend && pytest -v\`
+5. Open a PR with:
+\`Fixes #${issue.number}\`
+
+Happy coding 🚀`
+            });
